@@ -99,16 +99,21 @@ Enter your Docker projects base directory [/root/docker-services]:
 ```
 Docker Server Manager
 ---------------------------------
+Repository: https://github.com/akmfad1/docker-server-manager
+Version: 1.0.1
+Location: /usr/local/bin/dockermenu
+
 1) nginx-proxy
 2) nextjs-app
 3) monitoring
 4) Monitoring
-5) Network Menu
-6) System Menu
-7) Firewall
-8) SSH Config
-9) System Settings
-10) Exit
+5) Docker Management
+6) Network Menu
+7) System Menu
+8) Firewall
+9) SSH Config
+10) System Settings
+11) Exit
 ```
 
 <div dir="rtl">
@@ -158,6 +163,116 @@ Docker Server Manager
 
 <div dir="rtl">
 
+### منوی Docker Management
+
+مدیریت جهانی تمام سرویس‌های Docker:
+
+</div>
+
+```
+1) Docker stats (live)          ← مانیتورینگ زنده منابع
+2) Docker stats (snapshot)      ← عکس‌فوری از وضعیت فعلی
+3) Docker system df            ← مصرف فضای Docker
+4) Restart Docker service      ← ری‌استارت daemon
+5) Prune stopped containers    ← پاک‌سازی کانتینرهای متوقف
+6) Prune unused volumes        ← پاک‌سازی حجم‌های سالم
+7) Prune unused networks       ← پاک‌سازی شبکه‌های استفاده‌نشده
+8) Full Docker system prune    ← پاک‌سازی کامل (⚠️ دقت لازم)
+```
+
+<div dir="rtl">
+
+### منوی Network
+
+مدیریت شبکه‌های Docker و فایروال سطح هاست:
+
+</div>
+
+```
+1) List Docker networks         ← نمایش تمام شبکه‌های Docker
+2) Inspect a network           ← مشخصات کامل یک شبکه
+3) List containers in a network ← کانتینرهایی که به شبکه متصل‌اند
+4) Remove unused networks      ← حذف شبکه‌های سالم
+5) Show host routes            ← مسیرهای یا آپی سرور
+6) Show iptables rules         ← قوانین فایروال درونی
+```
+
+<div dir="rtl">
+
+### منوی System
+
+#### گزینه‌های اصلی:
+
+</div>
+
+```
+1) Disk usage (df -h)          ← مصرف دیسک
+2) Update system (apt)         ← بروزرسانی سیستم
+3) Failed systemd services    ← سرویس‌های خاموش‌شده
+4) Cron jobs                   ← مدیریت Crontab
+5) Backup compose files        ← بکاپ دایرکتوری پروژه‌ها
+6) Package installer           ← نصب بسته‌های مختلف
+7) Reboot system               ← ری‌استارت سرور
+8) Update dockermenu           ← بروزرسانی اسکریپت
+```
+
+<div dir="rtl">
+
+#### منوی Package Installer (زیرمنو):
+
+</div>
+
+```
+1) Essential bundle            ← تمام ابزار پایه یکجا
+   (htop, ncdu, iotop, nethogs, vnstat, nmap و غیره)
+
+2) Network tools               ← htop, nethogs, vnstat, nmap, net-tools, dnsutils
+3) General tools               ← curl, wget, git, nano, vim, unzip, zip, tree, jq, rsync, sysstat
+4) Security tools              ← fail2ban, ufw, certbot
+5) Terminal tools              ← tmux, ncdu, iotop
+6) Install custom package      ← نصب بسته دلخواه
+7) Show installed status       ← وضعیت نصب تمام بسته‌ها
+```
+
+<div dir="rtl">
+
+### منوی SSH Config
+
+تنظیمات و مدیریت SSH:
+
+</div>
+
+```
+1) View current SSH config     ← نمایش تنظیمات فعلی
+2) Change SSH settings (wizard) ← ویزارد تغییر تنظیمات (با بکاپ خودکار)
+3) Test SSH config syntax (sshd -t) ← بررسی صحت‌تنظیمات
+4) Restart SSH service         ← ری‌استارت درشیون SSH
+5) Show active SSH listeners   ← پورت‌های فعلاً در حال‌گوش‌دادن
+```
+
+<div dir="rtl">
+
+#### ویزارد تغییر SSH:
+
+تغییر تنظیمات SSH با بکاپ خودکار و امکان بازگشت:
+
+</div>
+
+```
+Port            [22]
+MaxAuthTries    [3]
+LoginGraceTime  [20]
+MaxSessions     [5]
+```
+
+<div dir="rtl">
+
+**ویژگی‌های ویزارد:**
+- قبل از اعمال، فایل `/etc/ssh/sshd_config` بکاپ می‌گیرد
+- تست سینتکس با `sshd -t` انجام می‌شود
+- از شما می‌خواهد از ترمینال دیگری اتصال SSH را تأیید کنید
+- در صورت عدم تأیید، به طور خودکار تنظیمات قبلی بازگردانده می‌شود
+
 ### منوی فایروال (UFW)
 
 </div>
@@ -173,40 +288,22 @@ Docker Server Manager
 
 <div dir="rtl">
 
-### ویزارد SSH
+### منوی Crontab Manager
 
-تغییر تنظیمات SSH با بکاپ خودکار و امکان بازگشت:
-
-</div>
-
-```
-Port            [22]
-MaxAuthTries    [3]
-LoginGraceTime  [20]
-MaxSessions     [5]
-```
-
-<div dir="rtl">
-
-- قبل از اعمال، فایل `/etc/ssh/sshd_config` بکاپ می‌گیرد
-- تست سینتکس با `sshd -t` انجام می‌شود
-- از شما می‌خواهد از ترمینال دیگری اتصال SSH را تأیید کنید
-- در صورت عدم تأیید، به طور خودکار تنظیمات قبلی بازگردانده می‌شود
-
-### مدیریت Crontab
+مدیریت کار‌های برنامه‌ریزی‌شده:
 
 </div>
 
 ```
 1) List all cron jobs
-2) Add new cron job (wizard)
+2) Add new cron job (wizard)       ← ویزارد گام‌به‌گام
 3) Delete a cron job by line number
 4) Edit crontab directly (nano)
 ```
 
 <div dir="rtl">
 
-نمونه پیش‌نمایش ویزارد:
+**نمونه پیش‌نمایش ویزارد:**
 
 </div>
 
@@ -220,25 +317,12 @@ Add this cron job? (y/N):
 
 <div dir="rtl">
 
-### تنظیمات سیستم
-
-</div>
-
-```
-1) Set timezone to Asia/Tehran
-2) Set custom timezone
-3) Change hostname
-4) Show full system info
-```
-
-<div dir="rtl">
-
 ---
 
 ## 🔄 بروزرسانی
 
 ### از داخل برنامه
-**System Menu ← گزینه ۱۴ ← Update dockermenu**
+**System Menu → گزینه ۸ → Update dockermenu**
 
 ### بروزرسانی دستی
 
