@@ -23,6 +23,37 @@ pause() {
     read -p "Press Enter to continue..."
 }
 
+get_system_info() {
+    local os_info ip_addr firewall_status docker_status crowdsec_status
+    
+    # OS Information
+    os_info=$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d'"' -f2 || echo "Unknown")
+    
+    # IP Address (primary IP)
+    ip_addr=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "N/A")
+    
+    # Firewall Status
+    firewall_status=$(sudo ufw status 2>/dev/null | head -1 || echo "N/A")
+    
+    # Docker Status
+    if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+        docker_status="✓ Installed & Running"
+    elif command -v docker &>/dev/null; then
+        docker_status="✗ Installed (not running)"
+    else
+        docker_status="✗ Not installed"
+    fi
+    
+    # CrowdSec Status
+    if command -v cscli &>/dev/null; then
+        crowdsec_status="✓ Installed"
+    else
+        crowdsec_status="✗ Not installed"
+    fi
+    
+    echo "$os_info|$ip_addr|$firewall_status|$docker_status|$crowdsec_status"
+}
+
 load_config() {
     if [[ -f "$CONFIG_FILE" ]]; then
         # shellcheck source=/dev/null
@@ -835,6 +866,170 @@ firewall_menu() {
     done
 }
 
+
+
+dns_menu() {
+    while true; do
+        clear
+        echo -e "${YELLOW}=== DNS Management ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
+        echo "Current DNS Configuration:"
+        echo "--------------------------"
+        grep -E "^DNS=|^FallbackDNS=" /etc/systemd/resolved.conf 2>/dev/null || echo "No custom DNS configured"
+        echo ""
+        echo "1) Custom DNS (دریافت از کاربر)"
+        echo "2) Public DNS (عمومی) - Google & Cloudflare"
+        echo "   DNS=8.8.8.8 1.1.1.1"
+        echo "   FallbackDNS=9.9.9.9"
+        echo "3) Shecan (شکن)"
+        echo "   DNS=178.22.122.100 185.51.200.2"
+        echo "   FallbackDNS=8.8.8.8"
+        echo "4) Infrastructure (زیرساخت)"
+        echo "   DNS=217.218.127.127 217.218.155.155"
+        echo "   FallbackDNS=8.8.8.8"
+        echo "5) Reset to Default (DHCP)"
+        echo "6) Back"
+
+        read -p "Select: " choice
+        case $choice in
+            1)
+                echo -e "${YELLOW}Enter primary DNS (e.g., 8.8.8.8):${NC}"
+                read -p "Primary DNS: " primary_dns
+                read -p "Secondary DNS (optional): " secondary_dns
+                read -p "Fallback DNS (optional): " fallback_dns
+                
+                if [[ -z "$primary_dns" ]]; then
+                    echo -e "${RED}Primary DNS cannot be empty${NC}"
+                    pause; continue
+                fi
+                
+                sudo sed -i "/^\[Resolve\]/,/^$/s/^DNS=.*/DNS=$primary_dns ${secondary_dns:-}/" /etc/systemd/resolved.conf
+                [[ -z "${secondary_dns}" ]] && sudo sed -i "s/^DNS=.*/DNS=$primary_dns/" /etc/systemd/resolved.conf
+                [[ -n "${secondary_dns}" ]] && sudo sed -i "s/^DNS=.*/DNS=$primary_dns $secondary_dns/" /etc/systemd/resolved.conf
+                [[ -n "${fallback_dns}" ]] && (grep -q "^FallbackDNS=" /etc/systemd/resolved.conf && sudo sed -i "s/^FallbackDNS=.*/FallbackDNS=$fallback_dns/" /etc/systemd/resolved.conf || echo "FallbackDNS=$fallback_dns" | sudo tee -a /etc/systemd/resolved.conf > /dev/null)
+                
+                sudo systemctl restart systemd-resolved
+                echo -e "${GREEN}DNS configuration updated${NC}"
+                log_action "DNS changed to: $primary_dns ${secondary_dns:-} (Fallback: ${fallback_dns:-none})"
+                pause
+                ;;
+            2)
+                _apply_dns "8.8.8.8 1.1.1.1" "9.9.9.9" "Public DNS"
+                ;;
+            3)
+                _apply_dns "178.22.122.100 185.51.200.2" "8.8.8.8" "Shecan"
+                ;;
+            4)
+                _apply_dns "217.218.127.127 217.218.155.155" "8.8.8.8" "Infrastructure"
+                ;;
+            5)
+                echo -e "${YELLOW}Resetting DNS to DHCP...${NC}"
+                sudo sed -i "s/^DNS=.*/# DNS=/; s/^FallbackDNS=.*/# FallbackDNS=/" /etc/systemd/resolved.conf
+                sudo systemctl restart systemd-resolved
+                echo -e "${GREEN}DNS reset to DHCP defaults${NC}"
+                log_action "DNS reset to DHCP defaults"
+                pause
+                ;;
+            6) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
+            *) echo "Invalid option" ;;
+        esac
+    done
+}
+
+_apply_dns() {
+    local dns_servers="$1" fallback_dns="$2" preset_name="$3"
+    
+    echo -e "${YELLOW}Applying $preset_name DNS configuration...${NC}"
+    
+    # Create backup
+    sudo cp /etc/systemd/resolved.conf /etc/systemd/resolved.conf.bak.$(date +%s)
+    
+    # Update DNS settings
+    if grep -q "^DNS=" /etc/systemd/resolved.conf; then
+        sudo sed -i "s/^DNS=.*/DNS=$dns_servers/" /etc/systemd/resolved.conf
+    else
+        sudo sed -i "/\[Resolve\]/a DNS=$dns_servers" /etc/systemd/resolved.conf
+    fi
+    
+    if grep -q "^FallbackDNS=" /etc/systemd/resolved.conf; then
+        sudo sed -i "s/^FallbackDNS=.*/FallbackDNS=$fallback_dns/" /etc/systemd/resolved.conf
+    else
+        sudo sed -i "/\[Resolve\]/a FallbackDNS=$fallback_dns" /etc/systemd/resolved.conf
+    fi
+    
+    # Restart systemd-resolved
+    sudo systemctl restart systemd-resolved
+    
+    echo -e "${GREEN}✓ $preset_name DNS applied successfully${NC}"
+    echo -e "${YELLOW}DNS Servers:${NC} $dns_servers"
+    echo -e "${YELLOW}Fallback DNS:${NC} $fallback_dns"
+    log_action "DNS changed to $preset_name: $dns_servers (Fallback: $fallback_dns)"
+    pause
+}
+
+network_test_menu() {
+    while true; do
+        clear
+        echo -e "${YELLOW}=== Network Testing ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
+        echo "1) Ping google.com (4 packets)"
+        echo "2) DNS Lookup google.com"
+        echo "3) DNS Lookup (current resolver)"
+        echo "4) Network interface info (ip addr)"
+        echo "5) Network routes"
+        echo "6) Speed test (download test)"
+        echo "7) DNS servers being used (systemd-resolved)"
+        echo "8) Back"
+
+        read -p "Select: " choice
+        case $choice in
+            1)
+                echo -e "${YELLOW}Pinging google.com...${NC}"
+                ping -c 4 google.com
+                pause
+                ;;
+            2)
+                echo -e "${YELLOW}Performing DNS lookup for google.com...${NC}"
+                nslookup google.com
+                pause
+                ;;
+            3)
+                echo -e "${YELLOW}Using host command for DNS lookup...${NC}"
+                host google.com
+                pause
+                ;;
+            4)
+                echo -e "${YELLOW}Network Interfaces:${NC}"
+                ip addr
+                pause
+                ;;
+            5)
+                echo -e "${YELLOW}Network Routes:${NC}"
+                ip route
+                pause
+                ;;
+            6)
+                echo -e "${YELLOW}Testing network speed (downloading 1MB from Google)...${NC}"
+                curl -o /dev/null -s -w "Speed: %{speed_download} bytes/sec\nTime: %{time_total}s\n" https://www.google.com
+                pause
+                ;;
+            7)
+                echo -e "${YELLOW}Current DNS Configuration:${NC}"
+                systemd-resolve --status | grep -A 20 "^[^ ]"
+                pause
+                ;;
+            8) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
+            *) echo "Invalid option" ;;
+        esac
+    done
+}
+
 system_settings_menu() {
     while true; do
         clear
@@ -849,8 +1044,10 @@ system_settings_menu() {
         echo "1) Set timezone to Asia/Tehran"
         echo "2) Set custom timezone"
         echo "3) Change hostname"
-        echo "4) Show full system info"
-        echo "5) Back"
+        echo "4) DNS Management"
+        echo "5) Network Testing"
+        echo "6) Show full system info"
+        echo "7) Back"
 
         read -p "Select: " choice
         case $choice in
@@ -882,13 +1079,19 @@ system_settings_menu() {
                 fi
                 pause ;;
             4)
+                dns_menu
+                ;;
+            5)
+                network_test_menu
+                ;;
+            6)
                 echo -e "${YELLOW}--- hostnamectl ---${NC}"
                 hostnamectl
                 echo ""
                 echo -e "${YELLOW}--- timedatectl ---${NC}"
                 timedatectl
                 pause ;;
-            5) break ;;
+            7) break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *) echo "Invalid option" ;;
@@ -904,6 +1107,17 @@ main_menu() {
         echo -e "${YELLOW}Repository:${NC} https://github.com/${GITHUB_REPO}"
         echo -e "${YELLOW}Version:${NC} 1.0.1"
         echo -e "${YELLOW}Location:${NC} ${INSTALL_PATH:-$0}"
+        echo ""
+        
+        # Display System Information
+        IFS='|' read -r os_info ip_addr firewall_status docker_status crowdsec_status < <(get_system_info)
+        echo -e "${YELLOW}System Information:${NC}"
+        echo -e "  OS:        $os_info"
+        echo -e "  IP:        $ip_addr"
+        echo -e "  Firewall:  $firewall_status"
+        echo -e "  Docker:    $docker_status"
+        echo -e "  CrowdSec:  $crowdsec_status"
+        echo ""
         echo "Tip: Press 'e' to exit"
         echo ""
 

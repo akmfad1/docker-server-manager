@@ -331,6 +331,97 @@ Add this cron job? (y/N):
 
 ---
 
+### منوی System Settings
+
+تنظیمات کلی سیستم:
+
+</div>
+
+```
+1) Set timezone to Asia/Tehran ← تنظیم منطقه زمانی ایران
+2) Set custom timezone         ← تنظیم منطقه زمانی دلخواه
+3) Change hostname             ← تغییر نام دستگاه
+4) DNS Management              ← مدیریت DNS
+5) Network Testing             ← تست کنندگی شبکه
+6) Show full system info       ← نمایش اطلاعات جامع سیستم
+```
+
+<div dir="rtl">
+
+#### مدیریت DNS
+
+تنظیم سریع DNS با چندین پریست:
+
+</div>
+
+```
+1) Custom DNS (دریافت از کاربر)  ← ورود دستی DNS‌های دلخواه
+2) Public DNS (عمومی)           ← Google & Cloudflare
+   DNS=8.8.8.8 1.1.1.1
+   FallbackDNS=9.9.9.9
+3) Shecan (شکن)                ← برای دسترسی به محتوای فیلترشده
+   DNS=178.22.122.100 185.51.200.2
+   FallbackDNS=8.8.8.8
+4) Infrastructure (زیرساخت)    ← DNS ایرانی
+   DNS=217.218.127.127 217.218.155.155
+   FallbackDNS=8.8.8.8
+5) Reset to Default (DHCP)     ← بازنشانی به تنظیمات پیش‌فرض
+```
+
+<div dir="rtl">
+
+#### تست شبکه
+
+ابزارهای تشخیصی شبکه:
+
+</div>
+
+```
+1) Ping google.com (4 packets)        ← تست اتصال
+2) DNS Lookup google.com              ← جستجوی DNS
+3) DNS Lookup (current resolver)      ← جستجو با resolver موجود
+4) Network interface info (ip addr)  ← اطلاعات رابط‌های شبکه
+5) Network routes                     ← مسیرهای شبکه
+6) Speed test (download test)         ← تست سرعت دانلود
+7) DNS servers being used             ← DNS‌های فعلی (systemd-resolved)
+```
+
+<div dir="rtl">
+
+---
+
+## 📊 اطلاعات سیستم
+
+منوی اصلی به صورت خودکار اطلاعات سیستم را نمایش می‌دهد:
+
+</div>
+
+```
+Docker Server Manager
+---------------------------------
+Repository: https://github.com/akmfad1/docker-server-manager
+Version: 1.0.1
+Location: /usr/local/bin/dockermenu
+
+System Information:
+  OS:        Ubuntu 24.04.3 LTS
+  IP:        193.162.129.166
+  Firewall:  inactive
+  Docker:    ✓ Installed & Running
+  CrowdSec:  ✓ Installed
+```
+
+<div dir="rtl">
+
+وضعیت Docker و CrowdSec:
+- `✓ Installed & Running` - نصب‌شده و فعال
+- `✗ Installed (not running)` - نصب‌شده اما خاموش
+- `✗ Not installed` - نصب نشده
+
+---
+
+---
+
 ### از داخل برنامه
 **System Menu → گزینه ۸ → Update dockermenu**
 
