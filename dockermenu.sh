@@ -440,49 +440,66 @@ system_menu() {
     while true; do
         clear
         echo -e "${YELLOW}System Menu${NC}"
-        echo "1)  Docker stats (snapshot)"
-        echo "2)  Disk usage (df -h)"
-        echo "3)  Docker system df"
-        echo "4)  Update system (apt)"
-        echo "5)  Restart Docker service"
-        echo "6)  Prune stopped containers"
-        echo "7)  Prune unused volumes"
-        echo "8)  Prune unused networks"
-        echo "9)  Full Docker system prune"
-        echo "10) Failed systemd services"
-        echo "11) Cron jobs"
-        echo "12) Backup compose files"
-        echo "13) Reboot system"
-        echo "14) Update dockermenu"
-        echo "15) Back"
+        echo "1) Disk usage (df -h)"
+        echo "2) Update system (apt)"
+        echo "3) Failed systemd services"
+        echo "4) Cron jobs"
+        echo "5) Backup compose files"
+        echo "6) Reboot system"
+        echo "7) Update dockermenu"
+        echo "8) Back"
 
         read -p "Select: " choice
 
         case $choice in
-            1)  docker stats --no-stream; pause ;;
-            2)  df -h --total; pause ;;
-            3)  docker system df -v; pause ;;
-            4)  sudo apt update && sudo apt upgrade -y; pause ;;
-            5)  read -p "Restart Docker service? (y/N): " confirm
-                [[ "$confirm" =~ ^[yY]$ ]] && sudo systemctl restart docker
-                pause ;;
-            6)  docker container prune -f; pause ;;
-            7)  docker volume prune -f; pause ;;
-            8)  docker network prune -f; pause ;;
-            9)  echo -e "${RED}This removes ALL unused Docker data!${NC}"
-                read -p "Continue? (y/N): " confirm
-                [[ "$confirm" =~ ^[yY]$ ]] && docker system prune -f
-                pause ;;
-            10) systemctl list-units --state=failed; pause ;;
-            11) crontab_menu ;;
-            12) BACKUP_FILE="/tmp/compose-backup-$(date +%F).tar.gz"
+            1)  df -h --total; pause ;;
+            2)  sudo apt update && sudo apt upgrade -y; pause ;;
+            3)  systemctl list-units --state=failed; pause ;;
+            4)  crontab_menu ;;
+            5)  BACKUP_FILE="/tmp/compose-backup-$(date +%F).tar.gz"
                 tar -czf "$BACKUP_FILE" "$BASE_DIR" 2>/dev/null && echo -e "${GREEN}Backup saved: $BACKUP_FILE${NC}" || echo -e "${RED}Backup failed${NC}"
                 pause ;;
-            13) read -p "Reboot the system? (y/N): " confirm
+            6)  read -p "Reboot the system? (y/N): " confirm
                 [[ "$confirm" =~ ^[yY]$ ]] && sudo reboot ;;
-            14) self_update ;;
-            15) break ;;
+            7)  self_update ;;
+            8)  break ;;
             *)  echo "Invalid option";;
+        esac
+    done
+}
+
+docker_global_menu() {
+    while true; do
+        clear
+        echo -e "${YELLOW}=== Docker Management ===${NC}"
+        echo "1) Docker stats (live)"
+        echo "2) Docker stats (snapshot)"
+        echo "3) Docker system df"
+        echo "4) Restart Docker service"
+        echo "5) Prune stopped containers"
+        echo "6) Prune unused volumes"
+        echo "7) Prune unused networks"
+        echo "8) Full Docker system prune"
+        echo "9) Back"
+
+        read -p "Select: " choice
+
+        case $choice in
+            1)  docker stats ;;
+            2)  docker stats --no-stream; pause ;;
+            3)  docker system df -v; pause ;;
+            4)  read -p "Restart Docker service? (y/N): " confirm
+                [[ "$confirm" =~ ^[yY]$ ]] && sudo systemctl restart docker
+                pause ;;
+            5)  docker container prune -f; pause ;;
+            6)  docker volume prune -f; pause ;;
+            7)  docker network prune -f; pause ;;
+            8)  echo -e "${RED}This removes ALL unused Docker data (images, containers, volumes, networks)!${NC}"
+                read -p "Continue? (y/N): " confirm
+                [[ "$confirm" =~ ^[yY]$ ]] && docker system prune -af --volumes
+                pause ;;
+            9)  break ;;
+            *)  echo "Invalid option" ;;
         esac
     done
 }
@@ -777,6 +794,8 @@ main_menu() {
 
         echo "$i) Monitoring"
         ((i++))
+        echo "$i) Docker Management"
+        ((i++))
         echo "$i) Network Menu"
         ((i++))
         echo "$i) System Menu"
@@ -791,10 +810,12 @@ main_menu() {
 
         read -p "Select: " choice
 
-        if [[ $choice -ge 1 && $choice -lt $((i-6)) ]]; then
+        if [[ $choice -ge 1 && $choice -lt $((i-7)) ]]; then
             project_menu "${projects[$((choice-1))]}"
-        elif [[ $choice -eq $((i-6)) ]]; then
+        elif [[ $choice -eq $((i-7)) ]]; then
             monitoring_menu
+        elif [[ $choice -eq $((i-6)) ]]; then
+            docker_global_menu
         elif [[ $choice -eq $((i-5)) ]]; then
             network_menu
         elif [[ $choice -eq $((i-4)) ]]; then
