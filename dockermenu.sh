@@ -867,7 +867,7 @@ system_settings_menu() {
 main_menu() {
     while true; do
         clear
-        echo -e "${GREEN}Docker akmfad1 Manager${NC}"
+        echo -e "${GREEN}Docker Server Manager${NC}"
         echo "---------------------------------"
 
         mapfile -t projects < <(get_projects)
