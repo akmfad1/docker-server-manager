@@ -298,9 +298,11 @@ monitoring_menu() {
     while true; do
         clear
         echo -e "${YELLOW}Monitoring Menu${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
         echo "1)  htop"
         echo "2)  uptime"
-        echo "3)  Memory (free -m)"
+        echo "3)  Memory (free -h)"
         echo "4)  Open ports (ss -tulpn)"
         echo "5)  Docker journal (live)"
         echo "6)  UFW status"
@@ -318,7 +320,7 @@ monitoring_menu() {
         case $choice in
             1)  htop ;;
             2)  uptime; pause ;;
-            3)  free -m; pause ;;
+            3)  free -h; pause ;;
             4)  ss -tulpn; pause ;;
             5)  sudo journalctl -u docker -f ;;
             6)  sudo ufw status verbose; pause ;;
@@ -342,6 +344,8 @@ monitoring_menu() {
             12) last -n 20; pause ;;
             13) sudo journalctl -u ssh --since today | grep -i "failed\|invalid\|refused" | tail -30; pause ;;
             14) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
             *)  echo "Invalid option";;
         esac
     done
@@ -360,7 +364,7 @@ crontab_wizard() {
     read -p "Step 2/6 - Hour     (0-23)  [*]: " c_hour;  c_hour="${c_hour:-*}"
     read -p "Step 3/6 - Day/Month(1-31)  [*]: " c_dom;   c_dom="${c_dom:-*}"
     read -p "Step 4/6 - Month    (1-12)  [*]: " c_month; c_month="${c_month:-*}"
-    read -p "Step 5/6 - Day/Week (0=Sun) [*]: " c_dow;   c_dow="${c_dow:-*}"
+    read -p "Step 5/6 - Day/Week (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat) [*]: " c_dow;   c_dow="${c_dow:-*}"
     echo ""
     read -p "Step 6/6 - Command to run: " c_cmd
 
@@ -396,6 +400,8 @@ crontab_menu() {
     while true; do
         clear
         echo -e "${YELLOW}=== Crontab Manager ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
         echo "1) List all cron jobs"
         echo "2) Add new cron job (wizard)"
         echo "3) Delete a cron job by line number"
@@ -431,6 +437,8 @@ crontab_menu() {
                 pause ;;
             4) EDITOR=nano crontab -e ;;
             5) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
             *) echo "Invalid option" ;;
         esac
     done
@@ -457,6 +465,7 @@ package_installer_menu() {
     while true; do
         clear
         echo -e "${YELLOW}=== Package Installer ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
         echo ""
         echo "1) Essential bundle (همه ابزارهای پایه)"
         echo "2) Network tools      (htop, nethogs, vnstat, nmap, net-tools, dnsutils)"
@@ -514,6 +523,8 @@ package_installer_menu() {
                 pause
                 ;;
             8) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
             *) echo "Invalid option" ;;
         esac
     done
@@ -523,6 +534,8 @@ system_menu() {
     while true; do
         clear
         echo -e "${YELLOW}System Menu${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
         echo "1) Disk usage (df -h)"
         echo "2) Update system (apt)"
         echo "3) Failed systemd services"
@@ -548,6 +561,8 @@ system_menu() {
                 [[ "$confirm" =~ ^[yY]$ ]] && sudo reboot ;;
             8)  self_update ;;
             9)  break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
             *)  echo "Invalid option";;
         esac
     done
@@ -557,6 +572,8 @@ docker_global_menu() {
     while true; do
         clear
         echo -e "${YELLOW}=== Docker Management ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
         echo "1) Docker stats (live)"
         echo "2) Docker stats (snapshot)"
         echo "3) Docker system df"
@@ -584,6 +601,8 @@ docker_global_menu() {
                 [[ "$confirm" =~ ^[yY]$ ]] && docker system prune -af --volumes
                 pause ;;
             9)  break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
             *)  echo "Invalid option" ;;
         esac
     done
@@ -593,6 +612,8 @@ network_menu() {
     while true; do
         clear
         echo -e "${YELLOW}Network Menu${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
         echo "1) List Docker networks"
         echo "2) Inspect a network"
         echo "3) List containers in a network"
@@ -624,6 +645,8 @@ network_menu() {
             5) ip route show; pause ;;
             6) sudo iptables -L -n --line-numbers 2>/dev/null; pause ;;
             7) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
             *) echo "Invalid option";;
         esac
     done
@@ -723,6 +746,7 @@ ssh_config_menu() {
     while true; do
         clear
         echo -e "${YELLOW}=== SSH Configuration ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
         local cur_port
         cur_port=$(grep -E "^Port " /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "22")
         echo -e "Current port: ${GREEN}$cur_port${NC}"
@@ -748,6 +772,8 @@ ssh_config_menu() {
                 pause ;;
             5) sudo ss -tlnp | grep ssh; pause ;;
             6) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
             *) echo "Invalid option" ;;
         esac
     done
@@ -757,6 +783,7 @@ firewall_menu() {
     while true; do
         clear
         echo -e "${YELLOW}=== Firewall (UFW) ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
         local ufw_status
         ufw_status=$(sudo ufw status 2>/dev/null | head -1)
         echo -e "Status: ${GREEN}${ufw_status}${NC}"
@@ -801,6 +828,8 @@ firewall_menu() {
                 fi
                 pause ;;
             7) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
             *) echo "Invalid option" ;;
         esac
     done
@@ -810,6 +839,7 @@ system_settings_menu() {
     while true; do
         clear
         echo -e "${YELLOW}=== System Settings ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
         local cur_tz cur_host
         cur_tz=$(timedatectl show --property=Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || echo "unknown")
         cur_host=$(hostname)
@@ -859,6 +889,8 @@ system_settings_menu() {
                 timedatectl
                 pause ;;
             5) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
             *) echo "Invalid option" ;;
         esac
     done
@@ -872,6 +904,7 @@ main_menu() {
         echo -e "${YELLOW}Repository:${NC} https://github.com/${GITHUB_REPO}"
         echo -e "${YELLOW}Version:${NC} 1.0.1"
         echo -e "${YELLOW}Location:${NC} ${INSTALL_PATH:-$0}"
+        echo "Tip: Press 'e' to exit"
         echo ""
 
         mapfile -t projects < <(get_projects)
@@ -916,6 +949,8 @@ main_menu() {
         elif [[ $choice -eq $((i-1)) ]]; then
             system_settings_menu
         elif [[ $choice -eq $i ]]; then
+            exit 0
+        elif [[ "$choice" =~ ^[eE]$ ]]; then
             exit 0
         else
             echo "Invalid option"
