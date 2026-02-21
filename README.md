@@ -153,11 +153,12 @@ Version: 1.0.1
 6)  UFW status
 7)  CrowdSec metrics       ← در صورت نبود، نصب پیشنهاد می‌دهد
 8)  CrowdSec decisions     ← در صورت نبود، نصب پیشنهاد می‌دهد
-9)  Docker events (last 1h)
-10) Top memory processes
-11) Disk I/O (iostat)
-12) Last logins
-13) Failed SSH logins (today)
+9)  CrowdSec - Apply ArvanCloud Whitelist ← راه‌اندازی خودکار whitelist آروان
+10) Docker events (last 1h)
+11) Top memory processes
+12) Disk I/O (iostat)
+13) Last logins
+14) Failed SSH logins (today)
 ```
 
 <div dir="rtl">

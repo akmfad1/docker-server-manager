@@ -158,6 +158,68 @@ install_crowdsec() {
     pause
 }
 
+apply_arvan_whitelist() {
+    clear
+    echo -e "${YELLOW}=== ArvanCloud Whitelist Configuration ===${NC}"
+    echo ""
+    echo -e "${YELLOW}Creating ArvanCloud whitelist file...${NC}"
+    echo ""
+    
+    # Check if CrowdSec is installed
+    if ! command -v crowdsec &>/dev/null; then
+        echo -e "${RED}CrowdSec is not installed.${NC}"
+        read -p "Install CrowdSec now? (y/N): " confirm
+        if [[ "$confirm" =~ ^[yY]$ ]]; then
+            install_crowdsec
+        else
+            echo -e "${RED}CrowdSec is required for this operation.${NC}"
+            pause; return
+        fi
+    fi
+    
+    # Create parser directory if it doesn't exist
+    sudo mkdir -p /etc/crowdsec/parsers/s02-enrich
+    
+    # Create the whitelist file
+    sudo tee /etc/crowdsec/parsers/s02-enrich/arvan-whitelist.yaml > /dev/null <<'EOF'
+name: crowdsecurity/arvan-whitelist
+description: "Whitelist ArvanCloud IPs"
+whitelist:
+  reason: "ArvanCloud CDN Nodes"
+  cidr:
+    - "185.143.232.0/22"
+    - "188.229.116.16/30"
+    - "94.101.182.0/27"
+    - "2.144.3.128/28"
+    - "37.32.16.0/27"
+    - "37.32.17.0/27"
+    - "37.32.18.0/27"
+    - "37.32.19.0/27"
+    - "185.215.232.0/22"
+    - "178.131.120.48/28"
+EOF
+    
+    echo -e "${GREEN}✓ Whitelist file created successfully${NC}"
+    echo ""
+    echo -e "${YELLOW}Testing CrowdSec configuration...${NC}"
+    
+    if sudo crowdsec -t 2>&1 | grep -q "config: Ok"; then
+        echo -e "${GREEN}✓ Configuration test passed${NC}"
+        echo ""
+        echo -e "${YELLOW}Restarting CrowdSec service...${NC}"
+        sudo systemctl restart crowdsec
+        echo -e "${GREEN}✓ CrowdSec restarted successfully${NC}"
+        log_action "ArvanCloud whitelist applied - CrowdSec restarted"
+    else
+        echo -e "${RED}✗ Configuration test failed${NC}"
+        echo -e "${YELLOW}Output:${NC}"
+        sudo crowdsec -t
+        log_action "ArvanCloud whitelist application failed - config test error"
+    fi
+    
+    pause
+}
+
 check_requirements() {
     load_config
     first_run_wizard
@@ -339,12 +401,13 @@ monitoring_menu() {
         echo "6)  UFW status"
         echo "7)  CrowdSec metrics"
         echo "8)  CrowdSec decisions"
-        echo "9)  Docker events (last 1h)"
-        echo "10) Top memory processes"
-        echo "11) Disk I/O (iostat)"
-        echo "12) Last logins"
-        echo "13) Failed SSH logins (today)"
-        echo "14) Back"
+        echo "9)  CrowdSec - Apply ArvanCloud Whitelist"
+        echo "10) Docker events (last 1h)"
+        echo "11) Top memory processes"
+        echo "12) Disk I/O (iostat)"
+        echo "13) Last logins"
+        echo "14) Failed SSH logins (today)"
+        echo "15) Back"
 
         read -p "Select: " choice
 
@@ -369,12 +432,13 @@ monitoring_menu() {
                 else
                     sudo cscli decisions list; pause
                 fi ;;
-            9)  docker events --since 1h --until "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; pause ;;
-            10) ps aux --sort=-%mem | head -15; pause ;;
-            11) iostat -xz 1 5 2>/dev/null || echo "iostat not found (install sysstat)"; pause ;;
-            12) last -n 20; pause ;;
-            13) sudo journalctl -u ssh --since today | grep -i "failed\|invalid\|refused" | tail -30; pause ;;
-            14) break ;;
+            9)  apply_arvan_whitelist ;;
+            10) docker events --since 1h --until "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; pause ;;
+            11) ps aux --sort=-%mem | head -15; pause ;;
+            12) iostat -xz 1 5 2>/dev/null || echo "iostat not found (install sysstat)"; pause ;;
+            13) last -n 20; pause ;;
+            14) sudo journalctl -u ssh --since today | grep -i "failed\|invalid\|refused" | tail -30; pause ;;
+            15) break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *)  echo "Invalid option";;
