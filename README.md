@@ -401,7 +401,6 @@ Docker Server Manager
 ---------------------------------
 Repository: https://github.com/akmfad1/docker-server-manager
 Version: 1.0.1
-Location: /usr/local/bin/dockermenu
 
 System Information:
   OS:        Ubuntu 24.04.3 LTS

@@ -1106,7 +1106,6 @@ main_menu() {
         echo "---------------------------------"
         echo -e "${YELLOW}Repository:${NC} https://github.com/${GITHUB_REPO}"
         echo -e "${YELLOW}Version:${NC} 1.0.1"
-        echo -e "${YELLOW}Location:${NC} ${INSTALL_PATH:-$0}"
         echo ""
         
         # Display System Information
