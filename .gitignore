@@ -1,0 +1,11 @@
+# Personal config
+*.conf
+.env
+
+# Logs
+*.log
+
+# Temp files
+*.tar.gz
+*.sh.bak
+get-docker.sh
