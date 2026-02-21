@@ -436,6 +436,89 @@ crontab_menu() {
     done
 }
 
+_pkg_install() {
+    local pkgs=("$@")
+    local to_install=()
+    for pkg in "${pkgs[@]}"; do
+        dpkg -s "$pkg" &>/dev/null || to_install+=("$pkg")
+    done
+    if [[ ${#to_install[@]} -eq 0 ]]; then
+        echo -e "${GREEN}All packages already installed.${NC}"
+    else
+        echo -e "${YELLOW}Installing: ${to_install[*]}${NC}"
+        sudo apt update -qq
+        sudo apt install -y "${to_install[@]}"
+        echo -e "${GREEN}Done.${NC}"
+    fi
+    pause
+}
+
+package_installer_menu() {
+    while true; do
+        clear
+        echo -e "${YELLOW}=== Package Installer ===${NC}"
+        echo ""
+        echo "1) Essential bundle (همه ابزارهای پایه)"
+        echo "2) Network tools      (htop, nethogs, vnstat, nmap, net-tools, dnsutils)"
+        echo "3) General tools      (curl, wget, git, nano, vim, unzip, zip, tree, jq, rsync, sysstat)"
+        echo "4) Security tools     (fail2ban, ufw, certbot)"
+        echo "5) Terminal tools     (tmux, ncdu, iotop)"
+        echo "6) Install custom package"
+        echo "7) Show installed status"
+        echo "8) Back"
+        echo ""
+        read -p "Select: " choice
+
+        case $choice in
+            1)
+                _pkg_install \
+                    htop ncdu iotop nethogs vnstat nmap net-tools dnsutils \
+                    curl wget git nano vim unzip zip tree jq rsync sysstat \
+                    fail2ban ufw certbot tmux
+                ;;
+            2)
+                _pkg_install htop nethogs vnstat nmap net-tools dnsutils
+                ;;
+            3)
+                _pkg_install curl wget git nano vim unzip zip tree jq rsync sysstat
+                ;;
+            4)
+                _pkg_install fail2ban ufw certbot
+                ;;
+            5)
+                _pkg_install tmux ncdu iotop
+                ;;
+            6)
+                read -p "Package name(s) to install (space-separated): " custom_pkgs
+                if [[ -n "$custom_pkgs" ]]; then
+                    read -ra pkg_arr <<< "$custom_pkgs"
+                    _pkg_install "${pkg_arr[@]}"
+                fi
+                ;;
+            7)
+                clear
+                echo -e "${YELLOW}=== Package Status ===${NC}"
+                echo ""
+                local all_pkgs=(htop ncdu iotop nethogs vnstat nmap net-tools dnsutils
+                                curl wget git nano vim unzip zip tree jq rsync sysstat
+                                fail2ban ufw certbot tmux)
+                printf "%-30s %s\n" "Package" "Status"
+                printf "%-30s %s\n" "-------" "------"
+                for pkg in "${all_pkgs[@]}"; do
+                    if dpkg -s "$pkg" &>/dev/null; then
+                        printf "%-30s ${GREEN}%s${NC}\n" "$pkg" "installed"
+                    else
+                        printf "%-30s ${RED}%s${NC}\n" "$pkg" "not installed"
+                    fi
+                done
+                pause
+                ;;
+            8) break ;;
+            *) echo "Invalid option" ;;
+        esac
+    done
+}
+
 system_menu() {
     while true; do
         clear
@@ -445,9 +528,10 @@ system_menu() {
         echo "3) Failed systemd services"
         echo "4) Cron jobs"
         echo "5) Backup compose files"
-        echo "6) Reboot system"
-        echo "7) Update dockermenu"
-        echo "8) Back"
+        echo "6) Package installer"
+        echo "7) Reboot system"
+        echo "8) Update dockermenu"
+        echo "9) Back"
 
         read -p "Select: " choice
 
@@ -459,10 +543,11 @@ system_menu() {
             5)  BACKUP_FILE="/tmp/compose-backup-$(date +%F).tar.gz"
                 tar -czf "$BACKUP_FILE" "$BASE_DIR" 2>/dev/null && echo -e "${GREEN}Backup saved: $BACKUP_FILE${NC}" || echo -e "${RED}Backup failed${NC}"
                 pause ;;
-            6)  read -p "Reboot the system? (y/N): " confirm
+            6)  package_installer_menu ;;
+            7)  read -p "Reboot the system? (y/N): " confirm
                 [[ "$confirm" =~ ^[yY]$ ]] && sudo reboot ;;
-            7)  self_update ;;
-            8)  break ;;
+            8)  self_update ;;
+            9)  break ;;
             *)  echo "Invalid option";;
         esac
     done
