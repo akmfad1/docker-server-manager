@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version: 1.0.0
+# Version: 1.0.1
 # Docker Server Manager - https://github.com/akmfad1/docker-server-manager
 
 GITHUB_REPO="akmfad1/docker-server-manager"
@@ -869,6 +869,10 @@ main_menu() {
         clear
         echo -e "${GREEN}Docker Server Manager${NC}"
         echo "---------------------------------"
+        echo -e "${YELLOW}Repository:${NC} https://github.com/${GITHUB_REPO}"
+        echo -e "${YELLOW}Version:${NC} 1.0.1"
+        echo -e "${YELLOW}Location:${NC} ${INSTALL_PATH:-$0}"
+        echo ""
 
         mapfile -t projects < <(get_projects)
         i=1
