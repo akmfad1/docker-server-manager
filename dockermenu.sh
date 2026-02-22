@@ -9,10 +9,15 @@ INSTALL_PATH="/usr/local/bin/dockermenu"
 CONFIG_FILE="$HOME/.config/dockermenu/config"
 LOG_FILE="/var/log/dockermenu.log"
 BASE_DIR="/root/docker-services"
+UPDATE_CACHE_FILE="/tmp/dockermenu_update_cache"
+
+# Extract current version from script header
+CURRENT_VERSION=$(grep -m1 '^# Version:' "$0" | awk '{print $3}')
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Handle Ctrl+C gracefully
@@ -24,6 +29,46 @@ log_action() {
 
 pause() {
     read -p "Press Enter to continue..."
+}
+
+# Run version check in background, cache result to /tmp
+check_update_async() {
+    (
+        # Skip if cache is fresh (less than 1 hour old)
+        if [[ -f "$UPDATE_CACHE_FILE" ]]; then
+            local cache_age=$(( $(date +%s) - $(date -r "$UPDATE_CACHE_FILE" +%s 2>/dev/null || echo 0) ))
+            [[ $cache_age -lt 3600 ]] && exit 0
+        fi
+        # Fetch remote version silently
+        if command -v curl &>/dev/null; then
+            local remote_ver
+            remote_ver=$(curl -fsSL --max-time 5 "$GITHUB_RAW" 2>/dev/null | grep -m1 '^# Version:' | awk '{print $3}')
+            if [[ -n "$remote_ver" ]]; then
+                echo "$remote_ver" > "$UPDATE_CACHE_FILE"
+            fi
+        fi
+    ) &>/dev/null &
+    disown
+}
+
+# Read cache and compare versions. Returns: "available <remote_ver>" or "uptodate"
+get_update_status() {
+    [[ ! -f "$UPDATE_CACHE_FILE" ]] && echo "unknown" && return
+    local remote_ver
+    remote_ver=$(cat "$UPDATE_CACHE_FILE" 2>/dev/null)
+    [[ -z "$remote_ver" ]] && echo "unknown" && return
+    if [[ "$remote_ver" != "$CURRENT_VERSION" ]]; then
+        # Simple semver-style: compare version strings
+        local latest
+        latest=$(printf '%s\n' "$CURRENT_VERSION" "$remote_ver" | sort -V | tail -1)
+        if [[ "$latest" == "$remote_ver" && "$remote_ver" != "$CURRENT_VERSION" ]]; then
+            echo "available $remote_ver"
+        else
+            echo "uptodate"
+        fi
+    else
+        echo "uptodate"
+    fi
 }
 
 get_system_info() {
@@ -122,7 +167,7 @@ self_update() {
                 sudo chmod +x "$INSTALL_PATH"
                 echo -e "${GREEN}Update successful! Please restart dockermenu.${NC}"
                 log_action "self-update to version $remote_ver"
-                rm -f "$tmp_file"
+                rm -f "$tmp_file" "$UPDATE_CACHE_FILE"
                 exit 0
             else
                 echo -e "${RED}Update failed. Could not write to $INSTALL_PATH${NC}"
@@ -1400,9 +1445,22 @@ main_menu() {
         echo -e "${GREEN}Docker Server Manager${NC}"
         echo "---------------------------------"
         echo -e "${YELLOW}Repository:${NC} https://github.com/${GITHUB_REPO}"
-        echo -e "${YELLOW}Version:${NC} 1.0.1"
+        echo -e "${YELLOW}Version:${NC} ${CURRENT_VERSION}"
+
+        # Check for update and show banner if available
+        local update_status
+        update_status=$(get_update_status)
+        local UPDATE_AVAILABLE=false
+        if [[ "$update_status" == available* ]]; then
+            local remote_ver="${update_status#available }"
+            UPDATE_AVAILABLE=true
+            echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
+            echo -e "${CYAN}║  🆕 نسخه جدید موجود است: ${GREEN}v${remote_ver}${CYAN}          ║${NC}"
+            echo -e "${CYAN}║  برای بروزرسانی گزینه Update را انتخاب کنید ║${NC}"
+            echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
+        fi
         echo ""
-        
+
         # Display System Information
         IFS='|' read -r os_info ip_addr firewall_status docker_status crowdsec_status < <(get_system_info)
         echo -e "${YELLOW}System Information:${NC}"
@@ -1436,26 +1494,34 @@ main_menu() {
         ((i++))
         echo "$i) System Settings"
         ((i++))
+        if $UPDATE_AVAILABLE; then
+            echo -e "${CYAN}$i) 🆕 Update dockermenu (v${remote_ver} available)${NC}"
+        else
+            echo "$i) Update dockermenu"
+        fi
+        ((i++))
         echo "$i) Exit"
 
         read -p "Select: " choice
 
-        if [[ $choice -ge 1 && $choice -lt $((i-7)) ]]; then
+        if [[ $choice -ge 1 && $choice -lt $((i-8)) ]]; then
             project_menu "${projects[$((choice-1))]}"
-        elif [[ $choice -eq $((i-7)) ]]; then
+        elif [[ $choice -eq $((i-8)) ]]; then
             monitoring_menu
-        elif [[ $choice -eq $((i-6)) ]]; then
+        elif [[ $choice -eq $((i-7)) ]]; then
             docker_global_menu
-        elif [[ $choice -eq $((i-5)) ]]; then
+        elif [[ $choice -eq $((i-6)) ]]; then
             network_menu
-        elif [[ $choice -eq $((i-4)) ]]; then
+        elif [[ $choice -eq $((i-5)) ]]; then
             system_menu
-        elif [[ $choice -eq $((i-3)) ]]; then
+        elif [[ $choice -eq $((i-4)) ]]; then
             firewall_menu
-        elif [[ $choice -eq $((i-2)) ]]; then
+        elif [[ $choice -eq $((i-3)) ]]; then
             ssh_config_menu
-        elif [[ $choice -eq $((i-1)) ]]; then
+        elif [[ $choice -eq $((i-2)) ]]; then
             system_settings_menu
+        elif [[ $choice -eq $((i-1)) ]]; then
+            self_update
         elif [[ $choice -eq $i ]]; then
             exit 0
         elif [[ "$choice" =~ ^[eE]$ ]]; then
@@ -1469,4 +1535,5 @@ main_menu() {
 
 
 check_requirements
+check_update_async
 main_menu
