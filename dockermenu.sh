@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version: 1.0.1
+# Version: 1.0.2
 # Docker Server Manager - https://github.com/akmfad1/docker-server-manager
 
 GITHUB_REPO="akmfad1/docker-server-manager"
@@ -14,6 +14,9 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+
+# Handle Ctrl+C gracefully
+trap 'echo -e "\n${RED}برنامه با دستور کاربر متوقف شد.${NC}"; exit 130' SIGINT
 
 log_action() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
@@ -158,6 +161,196 @@ install_crowdsec() {
     pause
 }
 
+install_speedtest() {
+    echo -e "${YELLOW}Installing Speedtest CLI...${NC}"
+    curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
+    sudo apt-get install -y speedtest
+    echo -e "${GREEN}Speedtest CLI installed successfully.${NC}"
+    speedtest --version
+    pause
+}
+
+backup_docker_volumes() {
+    clear
+    echo -e "${YELLOW}=== Docker Volumes Backup ===${NC}"
+    echo ""
+    
+    mapfile -t volumes < <(docker volume ls --format '{{.Name}}')
+    
+    if [[ ${#volumes[@]} -eq 0 ]]; then
+        echo -e "${RED}No Docker volumes found.${NC}"
+        pause
+        return
+    fi
+    
+    echo -e "${YELLOW}Available volumes:${NC}"
+    PS3="Select volume to backup (0 to cancel): "
+    select vol in "${volumes[@]}" "Back"; do
+        if [[ "$vol" == "Back" || -z "$vol" ]]; then
+            break
+        elif [[ -n "$vol" ]]; then
+            local backup_dir="$BASE_DIR/backups"
+            local backup_file="$backup_dir/volume_backup_${vol}_$(date +%Y%m%d_%H%M%S).tar.gz"
+            
+            mkdir -p "$backup_dir"
+            echo -e "${YELLOW}Backing up volume: $vol${NC}"
+            echo -e "${YELLOW}Output: $backup_file${NC}"
+            echo ""
+            
+            if docker run --rm -v "$vol":/volume -v "$backup_dir":/backup alpine tar -czf "/backup/$(basename "$backup_file")" -C /volume ./; then
+                local size=$(du -h "$backup_file" | awk '{print $1}')
+                echo -e "${GREEN}✓ Backup completed successfully!${NC}"
+                echo -e "${GREEN}Size: $size${NC}"
+                log_action "Docker volume backup: $vol -> $(basename "$backup_file") ($size)"
+            else
+                echo -e "${RED}✗ Backup failed!${NC}"
+            fi
+            pause
+            break
+        else
+            echo "Invalid selection"
+        fi
+    done
+}
+
+manage_docker_logs() {
+    clear
+    echo -e "${YELLOW}=== Docker Logs Management ===${NC}"
+    echo ""
+    echo "1) View Docker log disk usage"
+    echo "2) Truncate all Docker container logs (clear without stopping)"
+    echo "3) Clear Docker daemon logs"
+    echo "4) Back"
+    echo ""
+    
+    read -p "Select: " choice
+    case $choice in
+        1)
+            echo -e "${YELLOW}Docker logs disk usage:${NC}"
+            du -sh /var/lib/docker/containers/*/*-json.log 2>/dev/null | sort -rh | head -20 || echo "No logs found"
+            echo ""
+            echo -e "${YELLOW}Total logs size:${NC}"
+            du -sh /var/lib/docker/containers 2>/dev/null || echo "Unable to calculate"
+            pause
+            ;;
+        2)
+            echo -e "${RED}This will clear all Docker container logs WITHOUT stopping containers.${NC}"
+            read -p "Continue? (y/N): " confirm
+            if [[ "$confirm" =~ ^[yY]$ ]]; then
+                echo -e "${YELLOW}Truncating Docker logs...${NC}"
+                sudo find /var/lib/docker/containers -name "*-json.log" -exec truncate -s 0 {} \;
+                echo -e "${GREEN}✓ All Docker logs truncated successfully!${NC}"
+                log_action "Docker logs truncated"
+            fi
+            pause
+            ;;
+        3)
+            echo -e "${YELLOW}Clearing Docker daemon journal logs...${NC}"
+            sudo journalctl --vacuum=time=7d 2>/dev/null
+            sudo journalctl --vacuum=size=100M 2>/dev/null
+            echo -e "${GREEN}✓ Docker daemon logs cleaned!${NC}"
+            log_action "Docker daemon logs cleaned"
+            pause
+            ;;
+        4) return ;;
+        *) echo "Invalid option" ;;
+    esac
+}
+
+fail2ban_menu() {
+    if ! command -v fail2ban-client &>/dev/null; then
+        echo -e "${RED}fail2ban is not installed.${NC}"
+        read -p "Install fail2ban now? (y/N): " confirm
+        if [[ "$confirm" =~ ^[yY]$ ]]; then
+            echo -e "${YELLOW}Installing fail2ban...${NC}"
+            sudo apt update && sudo apt install -y fail2ban
+            sudo systemctl enable fail2ban
+            sudo systemctl start fail2ban
+            echo -e "${GREEN}fail2ban installed and started.${NC}"
+        else
+            pause
+            return
+        fi
+    fi
+    
+    while true; do
+        clear
+        echo -e "${YELLOW}=== Fail2Ban Management ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
+        echo "1) Show banned IPs (SSH)"
+        echo "2) Show banned IPs (all jails)"
+        echo "3) Unban a specific IP"
+        echo "4) View fail2ban status"
+        echo "5) Show jail statistics"
+        echo "6) Back"
+        echo ""
+        
+        read -p "Select: " choice
+        case $choice in
+            1)
+                echo -e "${YELLOW}Banned IPs in SSH jail:${NC}"
+                sudo fail2ban-client status sshd 2>/dev/null || echo "SSH jail not found"
+                pause
+                ;;
+            2)
+                echo -e "${YELLOW}All fail2ban jails status:${NC}"
+                sudo fail2ban-client status 2>/dev/null || echo "fail2ban service not running"
+                pause
+                ;;
+            3)
+                read -p "Enter SSH jail name [sshd]: " jail_name
+                jail_name="${jail_name:-sshd}"
+                
+                echo -e "${YELLOW}Banned IPs in '$jail_name':${NC}"
+                sudo fail2ban-client status "$jail_name" 2>/dev/null || { echo "Jail not found"; pause; continue; }
+                
+                echo ""
+                read -p "Enter IP to unban (or press Enter to skip): " ip_to_unban
+                if [[ -n "$ip_to_unban" ]]; then
+                    if sudo fail2ban-client set "$jail_name" unbanip "$ip_to_unban" 2>/dev/null; then
+                        echo -e "${GREEN}✓ IP $ip_to_unban has been unbanned from $jail_name${NC}"
+                        log_action "fail2ban - unbanned $ip_to_unban from $jail_name"
+                    else
+                        echo -e "${RED}✗ Failed to unban IP (check jail name or IP format)${NC}"
+                    fi
+                fi
+                pause
+                ;;
+            4)
+                echo -e "${YELLOW}fail2ban service status:${NC}"
+                sudo systemctl status fail2ban --no-pager 2>/dev/null || echo "fail2ban not running"
+                echo ""
+                echo -e "${YELLOW}fail2ban active jails:${NC}"
+                sudo fail2ban-client status 2>/dev/null | grep "Jail list" || echo "No active jails"
+                pause
+                ;;
+            5)
+                echo -e "${YELLOW}Fail2Ban Statistics:${NC}"
+                local jails
+                jails=$(sudo fail2ban-client status 2>/dev/null | grep "Jail list" | sed 's/.*Jail list:[ \t]*//' | tr ',' '\n' | sed 's/^[ \t]*//;s/[ \t]*$//')
+                if [[ -n "$jails" ]]; then
+                    printf "%-20s %-15s %-15s\n" "Jail" "Failed" "Banned"
+                    printf "%-20s %-15s %-15s\n" "----" "------" "------"
+                    while IFS= read -r jail; do
+                        local status=$(sudo fail2ban-client status "$jail" 2>/dev/null)
+                        local failed=$(echo "$status" | grep "Currently failed" | awk -F': ' '{print $2}')
+                        local banned=$(echo "$status" | grep "Currently banned" | awk -F': ' '{print $2}')
+                        printf "%-20s %-15s %-15s\n" "$jail" "${failed:-0}" "${banned:-0}"
+                    done <<< "$jails"
+                else
+                    echo "No active jails"
+                fi
+                pause
+                ;;
+            6) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
+            *) echo "Invalid option" ;;
+        esac
+    done
+}
+
 apply_arvan_whitelist() {
     clear
     echo -e "${YELLOW}=== ArvanCloud Whitelist Configuration ===${NC}"
@@ -221,13 +414,21 @@ EOF
 }
 
 check_requirements() {
-    load_config
-    first_run_wizard
-    load_config
+    # Load config if exists, otherwise run first-run wizard
+    if [[ -f "$CONFIG_FILE" ]]; then
+        load_config
+    else
+        first_run_wizard
+        load_config
+    fi
+    
+    # Verify BASE_DIR exists
     if [[ ! -d "$BASE_DIR" ]]; then
         echo -e "${RED}Error: BASE_DIR '$BASE_DIR' does not exist.${NC}"
         exit 1
     fi
+    
+    # Check Docker installation
     if ! command -v docker &>/dev/null; then
         echo -e "${YELLOW}Docker is not installed.${NC}"
         read -p "Install Docker now? (y/N): " confirm
@@ -238,10 +439,14 @@ check_requirements() {
             exit 1
         fi
     fi
+    
+    # Check Docker daemon is running
     if ! docker info &>/dev/null; then
         echo -e "${RED}Error: Docker daemon is not running.${NC}"
         exit 1
     fi
+    
+    # Setup logging
     mkdir -p "$(dirname "$LOG_FILE")" && touch "$LOG_FILE" 2>/dev/null || {
         echo -e "${YELLOW}Warning: Cannot write to log file '$LOG_FILE'. Logging disabled.${NC}"
         LOG_FILE="/dev/null"
@@ -562,7 +767,7 @@ package_installer_menu() {
         echo -e "${YELLOW}=== Package Installer ===${NC}"
         echo "Tip: Press 'b' to go back, 'e' to exit"
         echo ""
-        echo "1) Essential bundle (همه ابزارهای پایه)"
+        echo "1) Essential bundle (همه ابزارهای پایه) + speedtest"
         echo "2) Network tools      (htop, nethogs, vnstat, nmap, net-tools, dnsutils)"
         echo "3) General tools      (curl, wget, git, nano, vim, unzip, zip, tree, jq, rsync, sysstat)"
         echo "4) Security tools     (fail2ban, ufw, certbot)"
@@ -578,7 +783,7 @@ package_installer_menu() {
                 _pkg_install \
                     htop ncdu iotop nethogs vnstat nmap net-tools dnsutils \
                     curl wget git nano vim unzip zip tree jq rsync sysstat \
-                    fail2ban ufw certbot tmux
+                    fail2ban ufw certbot tmux speedtest
                 ;;
             2)
                 _pkg_install htop nethogs vnstat nmap net-tools dnsutils
@@ -605,7 +810,7 @@ package_installer_menu() {
                 echo ""
                 local all_pkgs=(htop ncdu iotop nethogs vnstat nmap net-tools dnsutils
                                 curl wget git nano vim unzip zip tree jq rsync sysstat
-                                fail2ban ufw certbot tmux)
+                                fail2ban ufw certbot tmux speedtest)
                 printf "%-30s %s\n" "Package" "Status"
                 printf "%-30s %s\n" "-------" "------"
                 for pkg in "${all_pkgs[@]}"; do
@@ -677,7 +882,9 @@ docker_global_menu() {
         echo "6) Prune unused volumes"
         echo "7) Prune unused networks"
         echo "8) Full Docker system prune"
-        echo "9) Back"
+        echo "9) Backup Docker volumes"
+        echo "10) Manage Docker logs"
+        echo "11) Back"
 
         read -p "Select: " choice
 
@@ -695,7 +902,9 @@ docker_global_menu() {
                 read -p "Continue? (y/N): " confirm
                 [[ "$confirm" =~ ^[yY]$ ]] && docker system prune -af --volumes
                 pause ;;
-            9)  break ;;
+            9)  backup_docker_volumes ;;
+            10) manage_docker_logs ;;
+            11) break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *)  echo "Invalid option" ;;
@@ -889,7 +1098,8 @@ firewall_menu() {
         echo "4) Allow a port/service"
         echo "5) Deny a port/service"
         echo "6) Delete a rule"
-        echo "7) Back"
+        echo "7) Fail2Ban Management"
+        echo "8) Back"
 
         read -p "Select: " choice
         case $choice in
@@ -922,7 +1132,10 @@ firewall_menu() {
                     log_action "firewall - deleted rule #$rule_num"
                 fi
                 pause ;;
-            7) break ;;
+            7)
+                fail2ban_menu
+                ;;
+            8) break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *) echo "Invalid option" ;;
@@ -1046,8 +1259,9 @@ network_test_menu() {
         echo "4) Network interface info (ip addr)"
         echo "5) Network routes"
         echo "6) Speed test (download test)"
-        echo "7) DNS servers being used (systemd-resolved)"
-        echo "8) Back"
+        echo "7) Speedtest CLI (Ookla Speedtest)"
+        echo "8) DNS servers being used (systemd-resolved)"
+        echo "9) Back"
 
         read -p "Select: " choice
         case $choice in
@@ -1082,11 +1296,28 @@ network_test_menu() {
                 pause
                 ;;
             7)
+                if ! command -v speedtest &>/dev/null; then
+                    echo -e "${RED}Speedtest CLI is not installed.${NC}"
+                    read -p "Install Speedtest CLI now? (y/N): " confirm
+                    if [[ "$confirm" =~ ^[yY]$ ]]; then
+                        install_speedtest
+                    else
+                        echo -e "${RED}Speedtest CLI is required for this operation.${NC}"
+                        pause
+                        continue
+                    fi
+                fi
+                echo -e "${YELLOW}Running Speedtest CLI...${NC}"
+                echo -e "${YELLOW}This may take a minute...${NC}"
+                speedtest
+                pause
+                ;;
+            8)
                 echo -e "${YELLOW}Current DNS Configuration:${NC}"
                 systemd-resolve --status | grep -A 20 "^[^ ]"
                 pause
                 ;;
-            8) break ;;
+            9) break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *) echo "Invalid option" ;;
