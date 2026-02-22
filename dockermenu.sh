@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version: 1.0.3
+# Version: 1.0.4
 # Docker Server Manager - https://github.com/akmfad1/docker-server-manager
 
 GITHUB_REPO="akmfad1/docker-server-manager"
@@ -208,12 +208,39 @@ install_crowdsec() {
 
 install_speedtest() {
     echo -e "${YELLOW}Installing Speedtest CLI...${NC}"
-    curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
-    sudo apt-get install -y speedtest
-    echo -e "${GREEN}Speedtest CLI installed successfully.${NC}"
-    speedtest --version
+    if curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash && \
+       sudo apt-get install -y speedtest; then
+        echo -e "${GREEN}Speedtest CLI installed successfully.${NC}"
+        speedtest --version
+        pause
+        return
+    fi
+
+    # fallback method if packagecloud script fails (e.g. network or repo issues)
+    echo -e "${YELLOW}Primary installation failed, attempting manual download...${NC}"
+    if command -v wget &>/dev/null; then
+        wget -O speedtest.tgz "https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz"
+        if tar -xzf speedtest.tgz && sudo mv speedtest /usr/local/bin/; then
+            echo -e "${GREEN}Speedtest CLI installed via manual download.${NC}"
+            speedtest --version
+            rm -f speedtest.tgz
+            pause
+            return
+        fi
+    fi
+
+    echo -e "${RED}Failed to install Speedtest CLI. Check network or try manual steps described in the script.${NC}"
+    echo "Manual install instructions:"
+    echo "  wget -O speedtest.tgz \"https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz\""
+    echo "  tar -xzf speedtest.tgz"
+    echo "  sudo mv speedtest /usr/local/bin/"
     pause
-}
+} # end install_speedtest
+# tests:
+# speedtest                # normal run
+# speedtest -s 4427        # Finland-Helsinki-DNA Oy
+# speedtest -s 19035       # Germany-Berlin-Vodafone
+# speedtest -s 10923       # United States-Chicago
 
 backup_docker_volumes() {
     clear
