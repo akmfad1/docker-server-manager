@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version: 1.0.4
+# Version: 1.0.5
 # Docker Server Manager - https://github.com/akmfad1/docker-server-manager
 
 GITHUB_REPO="akmfad1/docker-server-manager"
@@ -1192,18 +1192,16 @@ package_installer_menu() {
 system_menu() {
     while true; do
         clear
-        echo -e "${YELLOW}System Menu${NC}"
+        echo -e "${YELLOW}=== System Menu ===${NC}"
         echo "Tip: Press 'b' to go back, 'e' to exit"
         echo ""
         echo "1) Disk usage (df -h)"
         echo "2) Update system (apt)"
         echo "3) Failed systemd services"
         echo "4) Cron jobs"
-        echo "5) Backup compose files"
-        echo "6) Package installer"
-        echo "7) Reboot system"
-        echo "8) Update dockermenu"
-        echo "9) Back"
+        echo "5) Package installer"
+        echo "6) Reboot system"
+        echo "7) Back"
 
         read -p "Select: " choice
 
@@ -1212,14 +1210,10 @@ system_menu() {
             2)  sudo apt update && sudo apt upgrade -y; pause ;;
             3)  systemctl list-units --state=failed; pause ;;
             4)  crontab_menu ;;
-            5)  BACKUP_FILE="/tmp/compose-backup-$(date +%F).tar.gz"
-                tar -czf "$BACKUP_FILE" "$BASE_DIR" 2>/dev/null && echo -e "${GREEN}Backup saved: $BACKUP_FILE${NC}" || echo -e "${RED}Backup failed${NC}"
-                pause ;;
-            6)  package_installer_menu ;;
-            7)  read -p "Reboot the system? (y/N): " confirm
+            5)  package_installer_menu ;;
+            6)  read -p "Reboot the system? (y/N): " confirm
                 [[ "$confirm" =~ ^[yY]$ ]] && sudo reboot ;;
-            8)  self_update ;;
-            9)  break ;;
+            7)  break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *)  echo "Invalid option";;
@@ -1241,11 +1235,8 @@ docker_global_menu() {
         echo "6) Prune unused volumes"
         echo "7) Prune unused networks"
         echo "8) Full Docker system prune"
-        echo "9) Backup Docker volumes"
-        echo "10) Manage Docker logs"
-        echo "11) Resource limits & usage"
-        echo "12) Database backup"
-        echo "13) Back"
+        echo "9) Manage Docker logs"
+        echo "10) Back"
 
         read -p "Select: " choice
 
@@ -1263,11 +1254,8 @@ docker_global_menu() {
                 read -p "Continue? (y/N): " confirm
                 [[ "$confirm" =~ ^[yY]$ ]] && docker system prune -af --volumes
                 pause ;;
-            9)  backup_docker_volumes ;;
-            10) manage_docker_logs ;;
-            11) resource_menu ;;
-            12) db_backup_menu ;;
-            13) break ;;
+            9)  manage_docker_logs ;;
+            10) break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *)  echo "Invalid option" ;;
@@ -1278,7 +1266,7 @@ docker_global_menu() {
 network_menu() {
     while true; do
         clear
-        echo -e "${YELLOW}Network Menu${NC}"
+        echo -e "${YELLOW}=== Network Menu ===${NC}"
         echo "Tip: Press 'b' to go back, 'e' to exit"
         echo ""
         echo "1) List Docker networks"
@@ -1287,7 +1275,9 @@ network_menu() {
         echo "4) Remove unused networks"
         echo "5) Show host routes"
         echo "6) Show iptables rules"
-        echo "7) Back"
+        echo "7) DNS Management"
+        echo "8) Network Testing"
+        echo "9) Back"
 
         read -p "Select: " choice
 
@@ -1311,7 +1301,9 @@ network_menu() {
             4) docker network prune -f; pause ;;
             5) ip route show; pause ;;
             6) sudo iptables -L -n --line-numbers 2>/dev/null; pause ;;
-            7) break ;;
+            7) dns_menu ;;
+            8) network_test_menu ;;
+            9) break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *) echo "Invalid option";;
@@ -1702,10 +1694,8 @@ system_settings_menu() {
         echo "1) Set timezone to Asia/Tehran"
         echo "2) Set custom timezone"
         echo "3) Change hostname"
-        echo "4) DNS Management"
-        echo "5) Network Testing"
-        echo "6) Show full system info"
-        echo "7) Back"
+        echo "4) Show full system info"
+        echo "5) Back"
 
         read -p "Select: " choice
         case $choice in
@@ -1737,19 +1727,87 @@ system_settings_menu() {
                 fi
                 pause ;;
             4)
-                dns_menu
-                ;;
-            5)
-                network_test_menu
-                ;;
-            6)
                 echo -e "${YELLOW}--- hostnamectl ---${NC}"
                 hostnamectl
                 echo ""
                 echo -e "${YELLOW}--- timedatectl ---${NC}"
                 timedatectl
                 pause ;;
-            7) break ;;
+            5) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
+            *) echo "Invalid option" ;;
+        esac
+    done
+}
+
+security_menu() {
+    while true; do
+        clear
+        echo -e "${YELLOW}=== Security Menu ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
+        echo "1) Firewall (UFW)"
+        echo "2) SSH Configuration"
+        echo "3) Fail2Ban Management"
+        echo "4) CrowdSec metrics"
+        echo "5) CrowdSec decisions"
+        echo "6) CrowdSec - Apply ArvanCloud Whitelist"
+        echo "7) Failed SSH logins (today)"
+        echo "8) Security audit (containers)"
+        echo "9) Back"
+
+        read -p "Select: " choice
+        case $choice in
+            1) firewall_menu ;;
+            2) ssh_config_menu ;;
+            3) fail2ban_menu ;;
+            4) if ! command -v cscli &>/dev/null; then
+                    echo -e "${YELLOW}CrowdSec is not installed.${NC}"
+                    read -p "Install CrowdSec now? (y/N): " confirm
+                    [[ "$confirm" =~ ^[yY]$ ]] && install_crowdsec
+               else
+                    sudo cscli metrics; pause
+               fi ;;
+            5) if ! command -v cscli &>/dev/null; then
+                    echo -e "${YELLOW}CrowdSec is not installed.${NC}"
+                    read -p "Install CrowdSec now? (y/N): " confirm
+                    [[ "$confirm" =~ ^[yY]$ ]] && install_crowdsec
+               else
+                    sudo cscli decisions list; pause
+               fi ;;
+            6) apply_arvan_whitelist ;;
+            7) sudo journalctl -u ssh --since today | grep -i "failed\|invalid\|refused" | tail -30; pause ;;
+            8) security_audit ;;
+            9) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
+            *) echo "Invalid option" ;;
+        esac
+    done
+}
+
+backup_menu() {
+    while true; do
+        clear
+        echo -e "${YELLOW}=== Backup & Restore ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
+        echo "1) Backup compose files (all projects)"
+        echo "2) Backup Docker volumes"
+        echo "3) Database backup (pg/mysql/mongo)"
+        echo "4) Back"
+
+        read -p "Select: " choice
+        case $choice in
+            1)  BACKUP_FILE="/tmp/compose-backup-$(date +%F).tar.gz"
+                tar -czf "$BACKUP_FILE" "$BASE_DIR" 2>/dev/null \
+                    && echo -e "${GREEN}Backup saved: $BACKUP_FILE${NC}" \
+                    || echo -e "${RED}Backup failed${NC}"
+                pause ;;
+            2)  backup_docker_volumes ;;
+            3)  db_backup_menu ;;
+            4)  break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *) echo "Invalid option" ;;
@@ -1769,12 +1827,12 @@ main_menu() {
         local update_status
         update_status=$(get_update_status)
         local UPDATE_AVAILABLE=false
+        local remote_ver=""
         if [[ "$update_status" == available* ]]; then
-            local remote_ver="${update_status#available }"
+            remote_ver="${update_status#available }"
             UPDATE_AVAILABLE=true
             echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
-            echo -e "${CYAN}║  🆕 نسخه جدید موجود است: ${GREEN}v${remote_ver}${CYAN}          ║${NC}"
-            echo -e "${CYAN}║  برای بروزرسانی گزینه Update را انتخاب کنید ║${NC}"
+            echo -e "${CYAN}║  🆕 نسخه جدید: ${GREEN}v${remote_ver}${CYAN} — برای بروزرسانی 'u' بزنید ║${NC}"
             echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
         fi
         echo ""
@@ -1788,7 +1846,11 @@ main_menu() {
         echo -e "  Docker:    $docker_status"
         echo -e "  CrowdSec:  $crowdsec_status"
         echo ""
-        echo "Tip: Press 'e' to exit"
+        if $UPDATE_AVAILABLE; then
+            echo -e "Tip: Press 'e' to exit | ${CYAN}'u' to update to v${remote_ver}${NC}"
+        else
+            echo "Tip: Press 'e' to exit"
+        fi
         echo ""
 
         mapfile -t projects < <(get_projects)
@@ -1802,18 +1864,18 @@ main_menu() {
         ((i++))
         echo "$i) Docker Management"
         ((i++))
-        echo "$i) Network Menu"
+        echo "$i) Backup & Restore"
         ((i++))
-        echo "$i) System Menu"
+        echo "$i) Network"
         ((i++))
-        echo "$i) Firewall"
+        echo "$i) Security"
         ((i++))
-        echo "$i) SSH Config"
+        echo "$i) System"
         ((i++))
-        echo "$i) System Settings"
+        echo "$i) Settings"
         ((i++))
         if $UPDATE_AVAILABLE; then
-            echo -e "${CYAN}$i) 🆕 Update dockermenu (v${remote_ver} available)${NC}"
+            echo -e "${CYAN}$i) 🆕 Update dockermenu  →  v${remote_ver} available  [u]${NC}"
         else
             echo "$i) Update dockermenu"
         fi
@@ -1822,25 +1884,32 @@ main_menu() {
 
         read -p "Select: " choice
 
-        if [[ $choice -ge 1 && $choice -lt $((i-8)) ]]; then
-            project_menu "${projects[$((choice-1))]}"
-        elif [[ $choice -eq $((i-8)) ]]; then
-            monitoring_menu
-        elif [[ $choice -eq $((i-7)) ]]; then
-            docker_global_menu
-        elif [[ $choice -eq $((i-6)) ]]; then
-            network_menu
-        elif [[ $choice -eq $((i-5)) ]]; then
-            system_menu
-        elif [[ $choice -eq $((i-4)) ]]; then
-            firewall_menu
-        elif [[ $choice -eq $((i-3)) ]]; then
-            ssh_config_menu
-        elif [[ $choice -eq $((i-2)) ]]; then
-            system_settings_menu
-        elif [[ $choice -eq $((i-1)) ]]; then
+        # 'u' hotkey for update when available
+        if [[ "$choice" =~ ^[uU]$ ]]; then
             self_update
-        elif [[ $choice -eq $i ]]; then
+            continue
+        fi
+
+        local proj_count=${#projects[@]}
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $choice -ge 1 && $choice -le $proj_count ]]; then
+            project_menu "${projects[$((choice-1))]}"
+        elif [[ $choice -eq $((proj_count+1)) ]]; then
+            monitoring_menu
+        elif [[ $choice -eq $((proj_count+2)) ]]; then
+            docker_global_menu
+        elif [[ $choice -eq $((proj_count+3)) ]]; then
+            backup_menu
+        elif [[ $choice -eq $((proj_count+4)) ]]; then
+            network_menu
+        elif [[ $choice -eq $((proj_count+5)) ]]; then
+            security_menu
+        elif [[ $choice -eq $((proj_count+6)) ]]; then
+            system_menu
+        elif [[ $choice -eq $((proj_count+7)) ]]; then
+            system_settings_menu
+        elif [[ $choice -eq $((proj_count+8)) ]]; then
+            self_update
+        elif [[ $choice -eq $((proj_count+9)) ]]; then
             exit 0
         elif [[ "$choice" =~ ^[eE]$ ]]; then
             exit 0
