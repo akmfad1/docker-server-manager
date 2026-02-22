@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version: 1.0.2
+# Version: 1.0.3
 # Docker Server Manager - https://github.com/akmfad1/docker-server-manager
 
 GITHUB_REPO="akmfad1/docker-server-manager"
@@ -396,6 +396,289 @@ fail2ban_menu() {
     done
 }
 
+health_check_all() {
+    clear
+    echo -e "${YELLOW}=== Health Check All Services ===${NC}"
+    echo ""
+
+    local running
+    running=$(docker ps -q 2>/dev/null)
+    if [[ -z "$running" ]]; then
+        echo -e "${RED}No running containers found.${NC}"
+        pause; return
+    fi
+
+    echo -e "${YELLOW}Container Status Overview:${NC}"
+    echo ""
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    echo ""
+
+    # Highlight unhealthy / restarting
+    local problems=0
+    echo -e "${YELLOW}Containers with issues (unhealthy / restarting):${NC}"
+    while IFS= read -r line; do
+        if echo "$line" | grep -qiE "unhealthy|restarting"; then
+            echo -e "${RED}  ✗ $line${NC}"
+            ((problems++))
+        fi
+    done < <(docker ps --format "{{.Names}}: {{.Status}}")
+    [[ $problems -eq 0 ]] && echo -e "${GREEN}  ✓ All containers healthy${NC}"
+    echo ""
+
+    # High restart count warning (>3)
+    echo -e "${YELLOW}Containers with high restart count (>3):${NC}"
+    local found_restarts=0
+    while IFS= read -r cid; do
+        local name count
+        name=$(docker inspect "$cid" --format '{{.Name}}' | sed 's|/||')
+        count=$(docker inspect "$cid" --format '{{.RestartCount}}')
+        if [[ "$count" -gt 3 ]]; then
+            echo -e "${RED}  ⚠ $name: RestartCount=$count${NC}"
+            ((found_restarts++))
+        fi
+    done < <(docker ps -q)
+    [[ $found_restarts -eq 0 ]] && echo -e "${GREEN}  ✓ No abnormal restarts${NC}"
+    echo ""
+
+    # Summary
+    local total running_count
+    total=$(docker ps -a --format '{{.Names}}' | wc -l)
+    running_count=$(docker ps --format '{{.Names}}' | wc -l)
+    local stopped=$(( total - running_count ))
+    echo -e "${YELLOW}Summary:${NC} ${GREEN}$running_count running${NC}  |  ${RED}$stopped stopped${NC}  |  Total: $total"
+
+    pause
+}
+
+resource_menu() {
+    while true; do
+        clear
+        echo -e "${YELLOW}=== Resource Management ===${NC}"
+        echo "Tip: Press 'b' to go back, 'e' to exit"
+        echo ""
+        echo "1) Live resource usage (CPU/MEM)"
+        echo "2) Snapshot resource usage"
+        echo "3) Containers WITHOUT memory limits ⚠"
+        echo "4) OOM Kill history (dmesg)"
+        echo "5) Back"
+        echo ""
+        read -p "Select: " choice
+        case $choice in
+            1)
+                docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemLimit}}\t{{.NetIO}}\t{{.BlockIO}}"
+                ;;
+            2)
+                echo -e "${YELLOW}Resource Snapshot:${NC}"
+                docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemLimit}}\t{{.NetIO}}\t{{.BlockIO}}"
+                pause
+                ;;
+            3)
+                echo -e "${YELLOW}Containers with NO memory limit (Memory=0):${NC}"
+                echo ""
+                local found=0
+                local running
+                running=$(docker ps -q 2>/dev/null)
+                if [[ -z "$running" ]]; then
+                    echo "No running containers."
+                    pause; continue
+                fi
+                if ! command -v jq &>/dev/null; then
+                    echo -e "${YELLOW}Checking without jq...${NC}"
+                    while IFS= read -r cid; do
+                        local name mem
+                        name=$(docker inspect "$cid" --format '{{.Name}}' | sed 's|/||')
+                        mem=$(docker inspect "$cid" --format '{{.HostConfig.Memory}}')
+                        if [[ "$mem" == "0" ]]; then
+                            echo -e "${RED}  ⚠ $name : No memory limit set${NC}"
+                            ((found++))
+                        fi
+                    done < <(echo "$running")
+                else
+                    while IFS= read -r cid; do
+                        local name mem
+                        name=$(docker inspect "$cid" --format '{{.Name}}' | sed 's|/||')
+                        mem=$(docker inspect "$cid" | jq -r '.[0].HostConfig.Memory')
+                        if [[ "$mem" == "0" ]]; then
+                            echo -e "${RED}  ⚠ $name : No memory limit set${NC}"
+                            ((found++))
+                        fi
+                    done < <(echo "$running")
+                fi
+                [[ $found -eq 0 ]] && echo -e "${GREEN}  ✓ All containers have memory limits${NC}"
+                pause
+                ;;
+            4)
+                echo -e "${YELLOW}OOM Kill history (last 20 entries):${NC}"
+                sudo dmesg 2>/dev/null | grep -iE "oom|killed process|out of memory" | tail -20 \
+                    || echo "No OOM events found (or no dmesg access)"
+                pause
+                ;;
+            5) break ;;
+            b|B) break ;;
+            e|E) exit 0 ;;
+            *) echo "Invalid option" ;;
+        esac
+    done
+}
+
+db_backup_menu() {
+    clear
+    echo -e "${YELLOW}=== Database Backup ===${NC}"
+    echo ""
+
+    # Auto-detect database containers
+    mapfile -t db_containers < <(docker ps --format "{{.Names}}" | grep -iE "postgres|mysql|mariadb|mongo")
+
+    if [[ ${#db_containers[@]} -eq 0 ]]; then
+        echo -e "${RED}No database containers detected (postgres/mysql/mariadb/mongo).${NC}"
+        pause; return
+    fi
+
+    local backup_dir="$BASE_DIR/backups/db"
+    mkdir -p "$backup_dir"
+
+    echo -e "${YELLOW}Detected database containers:${NC}"
+    PS3="Select container to backup: "
+    select container in "${db_containers[@]}" "Back"; do
+        [[ "$container" == "Back" || -z "$container" ]] && return
+
+        local db_type timestamp backup_file
+        timestamp=$(date +%Y%m%d_%H%M%S)
+
+        if echo "$container" | grep -qi "postgres"; then
+            backup_file="$backup_dir/pg_backup_${container}_${timestamp}.sql.gz"
+            echo -e "${YELLOW}Backing up PostgreSQL: $container${NC}"
+            local pg_user
+            pg_user=$(docker exec "$container" bash -c 'echo $POSTGRES_USER' 2>/dev/null)
+            pg_user="${pg_user:-postgres}"
+            if docker exec "$container" pg_dumpall -U "$pg_user" 2>/dev/null | gzip > "$backup_file"; then
+                local size; size=$(du -h "$backup_file" | awk '{print $1}')
+                echo -e "${GREEN}✓ PostgreSQL backup saved: $(basename "$backup_file") ($size)${NC}"
+                log_action "DB backup: PostgreSQL $container -> $(basename "$backup_file") ($size)"
+            else
+                echo -e "${RED}✗ PostgreSQL backup failed!${NC}"
+                rm -f "$backup_file"
+            fi
+
+        elif echo "$container" | grep -qiE "mysql|mariadb"; then
+            backup_file="$backup_dir/mysql_backup_${container}_${timestamp}.sql.gz"
+            echo -e "${YELLOW}Backing up MySQL/MariaDB: $container${NC}"
+            local mysql_pass
+            mysql_pass=$(docker exec "$container" bash -c 'echo $MYSQL_ROOT_PASSWORD' 2>/dev/null)
+            if [[ -z "$mysql_pass" ]]; then
+                read -sp "Enter MySQL root password: " mysql_pass; echo ""
+            fi
+            if docker exec "$container" mysqldump --all-databases -u root -p"$mysql_pass" 2>/dev/null | gzip > "$backup_file"; then
+                local size; size=$(du -h "$backup_file" | awk '{print $1}')
+                echo -e "${GREEN}✓ MySQL backup saved: $(basename "$backup_file") ($size)${NC}"
+                log_action "DB backup: MySQL $container -> $(basename "$backup_file") ($size)"
+            else
+                echo -e "${RED}✗ MySQL backup failed!${NC}"
+                rm -f "$backup_file"
+            fi
+
+        elif echo "$container" | grep -qi "mongo"; then
+            backup_file="$backup_dir/mongo_backup_${container}_${timestamp}.tar.gz"
+            echo -e "${YELLOW}Backing up MongoDB: $container${NC}"
+            if docker exec "$container" mongodump --archive 2>/dev/null | gzip > "$backup_file"; then
+                local size; size=$(du -h "$backup_file" | awk '{print $1}')
+                echo -e "${GREEN}✓ MongoDB backup saved: $(basename "$backup_file") ($size)${NC}"
+                log_action "DB backup: MongoDB $container -> $(basename "$backup_file") ($size)"
+            else
+                echo -e "${RED}✗ MongoDB backup failed!${NC}"
+                rm -f "$backup_file"
+            fi
+        fi
+
+        echo ""
+        echo -e "${YELLOW}Backup directory: $backup_dir${NC}"
+        ls -lh "$backup_dir" 2>/dev/null
+        pause
+        break
+    done
+}
+
+security_audit() {
+    clear
+    echo -e "${YELLOW}=== Container Security Audit ===${NC}"
+    echo ""
+
+    local running
+    running=$(docker ps -q 2>/dev/null)
+    if [[ -z "$running" ]]; then
+        echo -e "${RED}No running containers found.${NC}"
+        pause; return
+    fi
+
+    local issues=0
+
+    # 1) Privileged containers
+    echo -e "${YELLOW}⚠  Privileged containers:${NC}"
+    local priv_found=0
+    while IFS= read -r cid; do
+        local name priv
+        name=$(docker inspect "$cid" --format '{{.Name}}' | sed 's|/||')
+        priv=$(docker inspect "$cid" --format '{{.HostConfig.Privileged}}')
+        if [[ "$priv" == "true" ]]; then
+            echo -e "${RED}   ✗ $name (--privileged)${NC}"
+            ((priv_found++)); ((issues++))
+        fi
+    done < <(echo "$running")
+    [[ $priv_found -eq 0 ]] && echo -e "${GREEN}   ✓ None${NC}"
+    echo ""
+
+    # 2) Containers running as root (no User set)
+    echo -e "${YELLOW}⚠  Containers running as root (no User defined):${NC}"
+    local root_found=0
+    while IFS= read -r cid; do
+        local name user
+        name=$(docker inspect "$cid" --format '{{.Name}}' | sed 's|/||')
+        user=$(docker inspect "$cid" --format '{{.Config.User}}')
+        if [[ -z "$user" ]]; then
+            echo -e "${YELLOW}   ~ $name (no user set — may run as root)${NC}"
+            ((root_found++)); ((issues++))
+        fi
+    done < <(echo "$running")
+    [[ $root_found -eq 0 ]] && echo -e "${GREEN}   ✓ All containers define a non-root user${NC}"
+    echo ""
+
+    # 3) Ports exposed on 0.0.0.0 (accessible to the world)
+    echo -e "${YELLOW}⚠  Ports bound on 0.0.0.0 (public exposure):${NC}"
+    local pub_found=0
+    while IFS= read -r line; do
+        if echo "$line" | grep -q "0.0.0.0"; then
+            echo -e "${YELLOW}   ~ $line${NC}"
+            ((pub_found++))
+        fi
+    done < <(docker ps --format "{{.Names}}: {{.Ports}}")
+    [[ $pub_found -eq 0 ]] && echo -e "${GREEN}   ✓ No ports exposed on 0.0.0.0${NC}"
+    echo ""
+
+    # 4) Trivy scan (if available)
+    echo -e "${YELLOW}⚠  Vulnerability scan (Trivy):${NC}"
+    if command -v trivy &>/dev/null; then
+        echo -e "${YELLOW}Running Trivy on all images (HIGH/CRITICAL only)...${NC}"
+        while IFS= read -r img; do
+            echo -e "${CYAN}--- Image: $img ---${NC}"
+            trivy image --severity HIGH,CRITICAL --quiet "$img" 2>/dev/null || echo "  Scan failed for $img"
+        done < <(docker images -q | sort -u)
+    else
+        echo -e "${YELLOW}   Trivy not installed. Install for full CVE scanning:${NC}"
+        echo -e "   ${CYAN}curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin${NC}"
+    fi
+    echo ""
+
+    # Summary
+    echo -e "${YELLOW}--- Audit Summary ---${NC}"
+    if [[ $issues -eq 0 ]]; then
+        echo -e "${GREEN}✓ No critical security issues detected${NC}"
+    else
+        echo -e "${RED}⚠ $issues issue(s) found — review above${NC}"
+    fi
+    log_action "security audit completed ($issues issues found)"
+    pause
+}
+
 apply_arvan_whitelist() {
     clear
     echo -e "${YELLOW}=== ArvanCloud Whitelist Configuration ===${NC}"
@@ -657,7 +940,9 @@ monitoring_menu() {
         echo "12) Disk I/O (iostat)"
         echo "13) Last logins"
         echo "14) Failed SSH logins (today)"
-        echo "15) Back"
+        echo "15) Health check all services"
+        echo "16) Security audit"
+        echo "17) Back"
 
         read -p "Select: " choice
 
@@ -688,7 +973,9 @@ monitoring_menu() {
             12) iostat -xz 1 5 2>/dev/null || echo "iostat not found (install sysstat)"; pause ;;
             13) last -n 20; pause ;;
             14) sudo journalctl -u ssh --since today | grep -i "failed\|invalid\|refused" | tail -30; pause ;;
-            15) break ;;
+            15) health_check_all ;;
+            16) security_audit ;;
+            17) break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *)  echo "Invalid option";;
@@ -929,7 +1216,9 @@ docker_global_menu() {
         echo "8) Full Docker system prune"
         echo "9) Backup Docker volumes"
         echo "10) Manage Docker logs"
-        echo "11) Back"
+        echo "11) Resource limits & usage"
+        echo "12) Database backup"
+        echo "13) Back"
 
         read -p "Select: " choice
 
@@ -949,7 +1238,9 @@ docker_global_menu() {
                 pause ;;
             9)  backup_docker_volumes ;;
             10) manage_docker_logs ;;
-            11) break ;;
+            11) resource_menu ;;
+            12) db_backup_menu ;;
+            13) break ;;
             b|B) break ;;
             e|E) exit 0 ;;
             *)  echo "Invalid option" ;;
