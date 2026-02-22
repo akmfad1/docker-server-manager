@@ -317,7 +317,7 @@ Tip: Press e to exit | u to update
 
 ---
 
-##  میانبرهای صفحهکلید
+##  میانبرهای صفحه‌کلید
 
 | کلید | عملکرد |
 |------|--------|
@@ -340,7 +340,7 @@ Tip: Press e to exit | u to update
 
 | مورد | توضیح |
 |------|-------|
-| سیستمعامل | Ubuntu 20.04+ / Debian 11+ |
+| سیستم‌عامل | Ubuntu 20.04+ / Debian 11+ |
 | Bash | نسخه 4.0+ |
 | Docker | در صورت نبود نصب خودکار پیشنهاد میشود |
 | Docker Compose | نسخه V2 |
@@ -372,7 +372,7 @@ BASE_DIR="/root/docker-services"
 
 ---
 
-##  تاریخچه نسخهها
+##  تاریخچه نسخه‌ها
 
 ### .. (جاری)
 - ** منوی Security**: یکپارچهسازی Firewall SSH Fail2Ban CrowdSec ArvanCloud و آدیت
